@@ -8,6 +8,7 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import ChatLoading from '../ChatLoading';
 import UserListItem from '../UserAvatar/UserListItem';
+import { getSender } from '../../config/chatLogics';
 
 const SideDrawer = () => {
 
@@ -17,7 +18,7 @@ const SideDrawer = () => {
     const [loadingChat, setLoadingChat] = useState();
 
     const { user} = ChatState()
-    const { setSelectedChat, chats, setChats } = ChatState()
+    const { setSelectedChat, chats, setChats, notification, setNotification} = ChatState()
 
     const navigate = useNavigate()
     const { isOpen, onOpen, onClose } = useDisclosure()
@@ -112,7 +113,19 @@ const SideDrawer = () => {
         <Menu>
             <MenuButton>
                 <BellIcon fontSize='2xl' m={1}/>
-                {/* <MenuList></MenuList> */}
+                <MenuList>
+                  {!notification.length && "No New Message"}
+                  {notification.map((notif)=>{
+                    return(
+                      <MenuItem key={notif._id} onClick={()=>{
+                        setSelectedChat(notif.chat)
+                        setNotification(notification.filter((n)=> n !== notif))
+                      }}>
+                        {notif.chat.isGroupChat ? `New Message in ${notif.chat.chatName}`: `New Message from ${getSender(user, notif.chat.users)}`}
+                      </MenuItem>
+                    )
+                  })}
+                </MenuList>
             </MenuButton>
         </Menu>
         <Menu>

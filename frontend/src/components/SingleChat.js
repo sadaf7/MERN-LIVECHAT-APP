@@ -8,17 +8,24 @@ import UpdateGroupModal from './miscellenious/UpdateGroupModal';
 import axios from 'axios';
 import './style.css'
 import ScrollableChat from './ScrollableChat';
-import ScrollableFeed from 'react-scrollable-feed'
+import io from 'socket.io-client'
+
+
+const END_POINT = "http://localhost:2000"
+var socket, selectedChatCompare;
 
 const SingleChat = ({fetchAgain,setFetchAgain}) => {
 
     const [messagess, setMessages] = useState([]);
     const [newMessages, setNewMessages] = useState('');
     const [loading, setLoading] = useState(false);
+    const [socketConnected, setSocketConnected] = useState(false);
+    const [typing, setTyping] = useState(false);
+    const [isTyping, setIsTyping] = useState(false);
 
     const toast = useToast();
 
-    const {user, selectedChat, setSelectedChat} = ChatState();
+    const {user, selectedChat, setSelectedChat,notification, setNotification} = ChatState();
 
     const fetchMessages = async ()=>{
         if(!selectedChat) return
@@ -36,6 +43,7 @@ const SingleChat = ({fetchAgain,setFetchAgain}) => {
             console.log(data.message)
             setMessages(data.message)
             setLoading(false)
+            socket.emit('join chat', selectedChat._id)
         } catch (error) {
             toast({
                 title: 'Error occured',
@@ -47,9 +55,17 @@ const SingleChat = ({fetchAgain,setFetchAgain}) => {
               })
         }
     }
+    useEffect(() => {
+        socket = io(END_POINT)
+        socket.emit("setup",user);
+        socket.on("connected",()=> setSocketConnected(true))
+        socket.on("typing", ()=> setIsTyping(true))
+        socket.on("stop typing", ()=> setIsTyping(false))
+    }, []);
 
     const sendMessage = async(event)=>{
         if(event.key === "Enter" && newMessages){
+            socket.emit("stop typing", selectedChat._id)
            
             try {
                 const config = {
@@ -64,6 +80,7 @@ const SingleChat = ({fetchAgain,setFetchAgain}) => {
                     chatId : selectedChat._id ,
                 },config)
                 console.log([data])
+                socket.emit('new message',data.message)
                 setMessages([...messagess,data.message])
                 // setMessages([...messages,data])
             } catch (error) {
@@ -78,13 +95,50 @@ const SingleChat = ({fetchAgain,setFetchAgain}) => {
             }
     }
 }
+    console.log(notification,'notification')
+
+    useEffect(() => {
+      socket.on('message recieved',(newMessageRecieved)=>{
+        if(!selectedChatCompare || selectedChatCompare._id !== newMessageRecieved.chat._id){
+            if(!notification.includes(newMessageRecieved)){
+                setNotification([newMessageRecieved,...notification])
+                setFetchAgain(!fetchAgain)
+            }
+        } else{
+            setMessages([...messagess,newMessageRecieved])
+        }
+      })
+    });
 
     useEffect(() => {
         fetchMessages();
+
+        selectedChatCompare = selectedChat;
     }, [selectedChat]);
 
     const handleTyping = async(e)=>{
         setNewMessages(e.target.value)
+
+        if(!socketConnected){
+            return
+        }
+
+        if(!typing){
+            setTyping(true)
+            socket.emit('typing',selectedChat._id)
+        }
+        let lastTypingTime = new Date().getTime();
+        var timerLength = 3000;
+
+        setTimeout(() => {
+            var timeNow = new Date().getTime();
+            var timeDiff = timeNow - lastTypingTime
+
+            if(timeDiff >= timerLength && typing ){
+                socket.emit('stop typing', selectedChat._id)
+                setTyping(false)
+            }
+        }, timerLength);
     }
 
   return (
@@ -119,6 +173,7 @@ const SingleChat = ({fetchAgain,setFetchAgain}) => {
                     </>
                 )}
                 <FormControl isRequired onKeyDown={sendMessage} mt={1}>
+                    {isTyping ? <div>loading...</div> : <></>}
                     <Input variant={'filled'} bg={'E0E0E0'} onChange={handleTyping} value={newMessages} placeholder='Send Message'/>
                 </FormControl>
             </Box>
